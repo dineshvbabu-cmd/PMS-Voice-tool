@@ -1,0 +1,12 @@
+{
+  "name": "harborops-fleet-copilot-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Railway-ready pitch demo for the HarborOps Fleet Copilot PMS and procurement plugin.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
