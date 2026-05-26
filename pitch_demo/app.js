@@ -3,6 +3,8 @@ const elements = {
   roleSelect: document.getElementById("roleSelect"),
   metricsStrip: document.getElementById("metricsStrip"),
   alertsList: document.getElementById("alertsList"),
+  promptLibrary: document.getElementById("promptLibrary"),
+  guideGrid: document.getElementById("guideGrid"),
   sampleRow: document.getElementById("sampleRow"),
   commandInput: document.getElementById("commandInput"),
   transcriptBox: document.getElementById("transcriptBox"),
@@ -21,6 +23,8 @@ const elements = {
   runButton: document.getElementById("runButton"),
   micButton: document.getElementById("micButton"),
   speakButton: document.getElementById("speakButton"),
+  voiceOrb: document.getElementById("voiceOrb"),
+  voiceState: document.getElementById("voiceState"),
   runTour: document.getElementById("runTour"),
   approveDraft: document.getElementById("approveDraft"),
   reviseDraft: document.getElementById("reviseDraft")
@@ -28,13 +32,25 @@ const elements = {
 
 const state = {
   sampleCommands: [],
+  promptGroups: [],
+  guidedStories: [],
   lastNarration: "",
-  bootstrap: null
+  bootstrap: null,
+  isRunning: false
 };
 
 function setText(node, value, muted = false) {
   node.textContent = value;
   node.classList.toggle("muted", muted);
+}
+
+function setVoiceMode(label, listening = false) {
+  if (elements.voiceState) {
+    elements.voiceState.textContent = label;
+  }
+  if (elements.voiceOrb) {
+    elements.voiceOrb.classList.toggle("listening", listening);
+  }
 }
 
 function escapeHtml(value) {
@@ -51,11 +67,15 @@ async function loadBootstrap() {
   const payload = await response.json();
   state.bootstrap = payload;
   state.sampleCommands = payload.sampleCommands;
+  state.promptGroups = payload.promptGroups || [];
+  state.guidedStories = payload.guidedStories || [];
   renderConnectors(payload.connectors);
   renderRoles(payload.roles);
   renderMetrics(payload.metrics);
   renderAlerts(payload.alerts);
   renderSamples(payload.sampleCommands);
+  renderPromptLibrary(state.promptGroups);
+  renderGuidedStories(state.guidedStories);
 }
 
 function renderConnectors(connectors) {
@@ -110,6 +130,69 @@ function renderSamples(commands) {
       runQuery(command);
     });
     elements.sampleRow.appendChild(button);
+  });
+}
+
+function renderPromptLibrary(groups) {
+  if (!elements.promptLibrary) {
+    return;
+  }
+
+  elements.promptLibrary.innerHTML = "";
+  groups.forEach((group) => {
+    const section = document.createElement("section");
+    section.className = "prompt-group";
+    const chips = group.prompts
+      .map(
+        (prompt) =>
+          `<button type="button" class="sample-chip prompt-chip" data-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`
+      )
+      .join("");
+
+    section.innerHTML = `
+      <p class="prompt-group-title">${escapeHtml(group.title)}</p>
+      <p class="prompt-group-description">${escapeHtml(group.description || "")}</p>
+      <div class="prompt-chip-grid">${chips}</div>
+    `;
+    elements.promptLibrary.appendChild(section);
+  });
+
+  elements.promptLibrary.querySelectorAll("[data-prompt]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const prompt = button.getAttribute("data-prompt");
+      elements.commandInput.value = prompt;
+      runQuery(prompt);
+    });
+  });
+}
+
+function renderGuidedStories(stories) {
+  if (!elements.guideGrid) {
+    return;
+  }
+
+  elements.guideGrid.innerHTML = "";
+  stories.forEach((story) => {
+    const card = document.createElement("article");
+    card.className = "guide-card";
+    card.innerHTML = `
+      <p class="guide-title">${escapeHtml(story.title)}</p>
+      <p class="guide-description">${escapeHtml(story.description || "")}</p>
+      <div class="guide-footer">
+        <button type="button" class="primary-button guide-button" data-story-id="${escapeHtml(story.id)}">Run this guide</button>
+      </div>
+    `;
+    elements.guideGrid.appendChild(card);
+  });
+
+  elements.guideGrid.querySelectorAll("[data-story-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const storyId = button.getAttribute("data-story-id");
+      const story = state.guidedStories.find((item) => item.id === storyId);
+      if (story) {
+        await runStory(story);
+      }
+    });
   });
 }
 
@@ -211,12 +294,18 @@ async function streamReply(text) {
 }
 
 async function runQuery(forcedCommand) {
+  if (state.isRunning) {
+    return;
+  }
   const query = forcedCommand || elements.commandInput.value.trim();
   if (!query) {
     setText(elements.transcriptBox, "Enter a command first.", true);
     return;
   }
 
+  state.isRunning = true;
+  toggleActionButtons(true);
+  setVoiceMode("Thinking through the request");
   setText(elements.transcriptBox, query);
   setText(elements.intentBox, "Routing request...", true);
   setText(elements.replyBox, "Connecting to the demo orchestration API...", true);
@@ -226,27 +315,72 @@ async function runQuery(forcedCommand) {
   renderTable(null);
   renderDraft(null);
 
-  const response = await fetch("/api/query", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      query,
-      connector: elements.connectorSelect.value,
-      role: elements.roleSelect.value
-    })
-  });
+  try {
+    const response = await fetch("/api/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        query,
+        connector: elements.connectorSelect.value,
+        role: elements.roleSelect.value
+      })
+    });
 
-  const payload = await response.json();
-  setText(elements.intentBox, payload.intent);
-  await streamReply(payload.reply);
-  renderToolTrace(payload.tools);
-  renderInsights(payload.insights);
-  renderCards(payload.cards);
-  renderTable(payload.table);
-  renderDraft(payload.draft);
-  state.lastNarration = payload.narration || payload.reply;
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
+    setText(elements.intentBox, payload.intent);
+    await streamReply(payload.reply);
+    renderToolTrace(payload.tools);
+    renderInsights(payload.insights);
+    renderCards(payload.cards);
+    renderTable(payload.table);
+    renderDraft(payload.draft);
+    state.lastNarration = payload.narration || payload.reply;
+    setVoiceMode("Response ready");
+  } catch (error) {
+    setText(elements.intentBox, "Query failed");
+    setText(elements.replyBox, `The demo request failed: ${error.message}`);
+    setVoiceMode("Demo request failed");
+  } finally {
+    state.isRunning = false;
+    toggleActionButtons(false);
+  }
+}
+
+function toggleActionButtons(disabled) {
+  [
+    elements.runButton,
+    elements.runTour,
+    elements.micButton,
+    elements.speakButton,
+    elements.approveDraft,
+    elements.reviseDraft
+  ].forEach((button) => {
+    if (button) {
+      button.disabled = disabled;
+    }
+  });
+}
+
+async function runStory(story) {
+  if (!story || !Array.isArray(story.commands) || !story.commands.length) {
+    return;
+  }
+
+  setVoiceMode(`Running guide: ${story.title}`);
+  for (const command of story.commands) {
+    elements.commandInput.value = command;
+    // eslint-disable-next-line no-await-in-loop
+    await runQuery(command);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  }
+  setVoiceMode(`Guide complete: ${story.title}`);
 }
 
 function setupSpeechRecognition() {
@@ -254,6 +388,7 @@ function setupSpeechRecognition() {
   if (!SpeechRecognition) {
     elements.micButton.textContent = "Mic unsupported";
     elements.micButton.disabled = true;
+    setVoiceMode("Microphone unavailable");
     return;
   }
 
@@ -262,7 +397,11 @@ function setupSpeechRecognition() {
   recognition.interimResults = false;
 
   elements.micButton.addEventListener("click", () => {
+    if (state.isRunning) {
+      return;
+    }
     elements.micButton.textContent = "Listening...";
+    setVoiceMode("Listening for a voice command", true);
     recognition.start();
   });
 
@@ -274,6 +413,7 @@ function setupSpeechRecognition() {
 
   const resetMic = () => {
     elements.micButton.textContent = "Mic";
+    setVoiceMode("Ready for a command");
   };
 
   recognition.addEventListener("end", resetMic);
@@ -295,30 +435,39 @@ function setupSpeechSynthesis() {
     const utterance = new SpeechSynthesisUtterance(state.lastNarration);
     utterance.rate = 1;
     utterance.pitch = 1;
+    utterance.addEventListener("start", () => setVoiceMode("Speaking the reply"));
+    utterance.addEventListener("end", () => setVoiceMode("Response ready"));
     window.speechSynthesis.speak(utterance);
   });
 }
 
 function setupButtons() {
   elements.runButton.addEventListener("click", () => runQuery());
+  elements.commandInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runQuery();
+    }
+  });
   elements.runTour.addEventListener("click", async () => {
-    for (const command of state.sampleCommands) {
-      elements.commandInput.value = command;
+    for (const story of state.guidedStories) {
       // eslint-disable-next-line no-await-in-loop
-      await runQuery(command);
+      await runStory(story);
       // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await new Promise((resolve) => setTimeout(resolve, 700));
     }
   });
 
   elements.approveDraft.addEventListener("click", () => {
     setText(elements.insightsBox, "Draft approved in demo mode. In a live system, the write request would now move to the host PMS or procurement API.");
     elements.insightsBox.classList.remove("muted");
+    setVoiceMode("Draft approved");
   });
 
   elements.reviseDraft.addEventListener("click", () => {
     setText(elements.insightsBox, "Revision requested in demo mode. This is useful in the pitch to show safe human control over all regulated writes.");
     elements.insightsBox.classList.remove("muted");
+    setVoiceMode("Revision requested");
   });
 }
 

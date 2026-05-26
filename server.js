@@ -154,6 +154,80 @@ const demoState = {
       etaDate: "2026-05-21",
       totalAmount: 2150
     }
+  ],
+  promptGroups: [
+    {
+      title: "Maintenance Lookups",
+      description: "Daily officer and superintendent queries.",
+      prompts: [
+        "What jobs are due on Meridian Pearl in the next 7 days?",
+        "Read the instructions for WO-24051",
+        "Show overdue jobs on Ocean Crest",
+        "What critical overdue jobs are blocked by awaiting spares?"
+      ]
+    },
+    {
+      title: "Defects And Postponements",
+      description: "Controlled write workflows with approval steps.",
+      prompts: [
+        "Report a defect on purifier number 2 on Ocean Crest",
+        "Postpone WO-24088 to 2026-05-30 because awaiting spares",
+        "Defer WO-24088 due to material delay",
+        "Create a defect for steering gear leak on Ocean Crest"
+      ]
+    },
+    {
+      title: "Requisitions And Procurement",
+      description: "Spare ordering, buyer follow-up, and impact tracking.",
+      prompts: [
+        "Raise a requisition for steering gear O-rings linked to WO-24088",
+        "Which urgent requisitions are older than 7 days?",
+        "Follow up on urgent procurement items",
+        "What delayed POs affect maintenance?"
+      ]
+    },
+    {
+      title: "Analytics And Executive Questions",
+      description: "Explain trends and root causes.",
+      prompts: [
+        "Why is maintenance completion low on Meridian Pearl?",
+        "Give me analytics for fleet maintenance backlog",
+        "What is causing delay in job completion?",
+        "Summarize what this assistant can do"
+      ]
+    }
+  ],
+  guidedStories: [
+    {
+      id: "supt_round",
+      title: "Superintendent Daily Round",
+      description: "Review due work, overdue blockers, and a postponement draft.",
+      commands: [
+        "What jobs are due on Meridian Pearl in the next 7 days?",
+        "What critical overdue jobs are blocked by awaiting spares?",
+        "Postpone WO-24088 to 2026-05-30 because awaiting spares"
+      ]
+    },
+    {
+      id: "buyer_followup",
+      title: "Buyer Escalation Story",
+      description: "Link job urgency to requisition and sourcing activity.",
+      commands: [
+        "Raise a requisition for steering gear O-rings linked to WO-24088",
+        "Which urgent requisitions are older than 7 days?",
+        "What delayed POs affect maintenance?"
+      ]
+    },
+    {
+      id: "executive_brief",
+      title: "Management Briefing",
+      description: "Show leadership-level analytics and product capabilities.",
+      commands: [
+        "Why is maintenance completion low on Meridian Pearl?",
+        "Give me analytics for fleet maintenance backlog",
+        "Summarize what this assistant can do"
+      ]
+    }
   ]
 };
 
@@ -241,6 +315,30 @@ function handleQuery(query, role, connector) {
     return result("No query", "Enter a query to run the demo.", { transcript });
   }
 
+  if (text.includes("what can you do") || text.includes("summarize what this assistant can do") || text === "help") {
+    return result(
+      "Capability summary",
+      "I can demonstrate due and overdue job lookups, work-order readout, defect drafting, postponement requests, requisition creation, procurement follow-up, and management analytics across PMS and procurement data.",
+      {
+        transcript,
+        tools: [
+          toolTrace("list_capabilities()", "returned supported demo workflows"),
+          toolTrace("policy_router()", "highlighted controlled write actions and approvals")
+        ],
+        cards: [
+          card("Read workflows", "Jobs and details", "good", "Due jobs, overdue items, instructions, descriptions"),
+          card("Write workflows", "Controlled drafts", "warn", "Defects, postponements, requisitions"),
+          card("Procurement", "Follow-up ready", "good", "Req aging, sourcing priority, PO delay impact"),
+          card("Analytics", "Explainable", "good", "Root cause and management narrative")
+        ],
+        insights: [
+          "This is a strong first-click prompt for customer demos.",
+          "It helps new users understand the assistant before trying voice."
+        ]
+      }
+    );
+  }
+
   if (text.includes("instruction") || text.includes("description") || text.includes("read the instructions")) {
     if (!job) {
       return result(
@@ -299,6 +397,32 @@ function handleQuery(query, role, connector) {
     );
   }
 
+  if (text.includes("delayed po") || (text.includes("po") && text.includes("maintenance"))) {
+    const delayed = demoState.purchaseOrders.filter((item) => item.status === "DELAYED");
+    return result(
+      "PO delay impact review",
+      `I found ${delayed.length} delayed purchase orders in the mock environment. The key message is that procurement delay can be translated into operational risk instead of staying isolated inside purchasing screens.`,
+      {
+        transcript,
+        tools: [
+          toolTrace("search_purchase_orders(status)", `returned ${delayed.length} delayed purchase orders`),
+          toolTrace("map_po_delay_to_job_risk()", "joined delayed supply to affected maintenance workflow")
+        ],
+        cards: [
+          card("Delayed POs", String(delayed.length), "warn", "Supplier or ETA exception"),
+          card("Operational impact", "1 exposed job", "risk", "Critical corrective work remains at risk"),
+          card("Buyer priority", "Escalate supplier", "neutral", "Focus on critical material path"),
+          card("Demo value", "Cross-team clarity", "good", "Purchasing and technical see the same risk story")
+        ],
+        table: buildTable(
+          "Delayed PO impact",
+          ["PO", "Supplier", "ETA", "Status", "Likely impact"],
+          delayed.map((item) => [item.poId, item.supplier, item.etaDate, item.status, "Corrective maintenance delay risk"])
+        )
+      }
+    );
+  }
+
   if ((text.includes("due") || text.includes("next 7 days")) && text.includes("job")) {
     const vessel = findVessel(text) || "Meridian Pearl";
     const jobs = demoState.jobs.filter((item) => item.vessel === vessel && item.status !== "CLOSED");
@@ -330,7 +454,7 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("report a defect") || (text.includes("defect") && text.includes("report"))) {
+  if (text.includes("report a defect") || (text.includes("defect") && (text.includes("report") || text.includes("create")))) {
     const vessel = findVessel(text) || "Ocean Crest";
     const defectId = `DEF-${7400 + demoState.jobs.length}`;
     const correctiveJob = `WO-${24140 + demoState.jobs.length}`;
@@ -464,7 +588,7 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("why is maintenance completion low") || text.includes("analysis") || text.includes("analytics")) {
+  if (text.includes("why is maintenance completion low") || text.includes("analysis") || text.includes("analytics") || text.includes("job completion")) {
     return result(
       "Operational analytics",
       `Maintenance completion is low because the mock fleet has critical jobs held by material availability, plus one in-progress unplanned job consuming engine department attention. In production, the plugin would compute this deterministically from completion rate, backlog aging, blocking reasons, and requisition aging before generating the explanation.`,
@@ -484,6 +608,26 @@ function handleQuery(query, role, connector) {
         insights: [
           "This is the analysis mode customers usually remember after the demo.",
           "The product should always compute the numbers in code, then let the model explain them."
+        ]
+      }
+    );
+  }
+
+  if (text.includes("backlog")) {
+    return result(
+      "Backlog analysis",
+      "The maintenance backlog in this demo is concentrated around critical jobs blocked by material availability. That means the best corrective action is not just more reminders, but tighter spare ordering and faster buyer escalation.",
+      {
+        transcript,
+        tools: [
+          toolTrace("search_overdue_jobs(age_bucket, critical_only)", "loaded current backlog exposure"),
+          toolTrace("group_backlog_by_blocker()", "identified awaiting spares as the main bottleneck")
+        ],
+        cards: [
+          card("Backlog driver", "Awaiting spares", "risk", "Primary blocking reason"),
+          card("Critical exposure", "High", "warn", "Steering gear and compressor jobs are affected"),
+          card("Best action", "Procurement escalation", "good", "Fastest way to reduce the backlog"),
+          card("Story type", "Root cause", "neutral", "Good executive pitch scenario")
         ]
       }
     );
@@ -528,6 +672,8 @@ const server = http.createServer(async (req, res) => {
         roles: demoState.roles,
         metrics: demoState.metrics,
         alerts: demoState.alerts,
+        promptGroups: demoState.promptGroups,
+        guidedStories: demoState.guidedStories,
         sampleCommands: [
           "What jobs are due on Meridian Pearl in the next 7 days?",
           "Read the instructions for WO-24051",

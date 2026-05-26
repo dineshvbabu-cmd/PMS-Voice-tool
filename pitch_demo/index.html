@@ -7,141 +7,226 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="ambient ambient-a"></div>
-  <div class="ambient ambient-b"></div>
-  <div class="shell">
-    <header class="masthead">
-      <div class="mast-copy">
-        <p class="eyebrow">AI Plugin Pitch Demo</p>
-        <h1>HarborOps Fleet Copilot</h1>
-        <p class="lede">
-          A voice-first plugin for PMS, defects, inventory, requisitions, and procurement follow-up.
-        </p>
-        <div class="hero-badges">
-          <span class="badge">Vendor-neutral connector layer</span>
-          <span class="badge">Approval-safe write workflows</span>
-          <span class="badge">PMS + Purchase + Analytics</span>
+  <div class="aurora aurora-a"></div>
+  <div class="aurora aurora-b"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-dot"></span>
+        <div>
+          <p class="eyebrow">Embedded Voice Plugin Demo</p>
+          <h1>HarborOps Fleet Copilot</h1>
         </div>
       </div>
-      <div class="mast-panel">
-        <div class="selector-grid">
-          <label class="selector">
-            <span>Connector profile</span>
-            <select id="connectorSelect"></select>
-          </label>
-          <label class="selector">
-            <span>User role</span>
-            <select id="roleSelect"></select>
-          </label>
-        </div>
-        <div class="hero-actions">
-          <button id="runTour" class="primary-button" type="button">Run Guided Story</button>
-          <a class="secondary-link" href="/PRODUCT_PRD_HARBOROPS_FLEET_COPILOT.md" target="_blank" rel="noreferrer">Open PRD</a>
-        </div>
+      <div class="topbar-actions">
+        <span class="plugin-chip">PMS + Procurement Plugin</span>
+        <a class="secondary-link" href="/PRODUCT_PRD_HARBOROPS_FLEET_COPILOT.md" target="_blank" rel="noreferrer">Open PRD</a>
       </div>
     </header>
 
-    <section class="metrics-strip" id="metricsStrip"></section>
-
-    <main class="main-grid">
-      <section class="panel panel-console">
-        <div class="panel-head">
-          <div>
-            <p class="panel-kicker">Voice Console</p>
-            <h2>Ask the operations copilot</h2>
-          </div>
-          <span class="live-pill">Mock API online</span>
+    <section class="host-frame">
+      <aside class="host-rail">
+        <div class="host-logo">HO</div>
+        <div class="host-stack">
+          <span class="host-node active"></span>
+          <span class="host-node"></span>
+          <span class="host-node"></span>
+          <span class="host-node"></span>
         </div>
-
-        <div class="command-row">
-          <label class="sr-only" for="commandInput">Command</label>
-          <input id="commandInput" type="text" placeholder="Try: What critical overdue jobs are blocked by awaiting spares?">
-          <button id="micButton" class="ghost-button" type="button">Mic</button>
-          <button id="speakButton" class="ghost-button" type="button">Speak reply</button>
-          <button id="runButton" class="primary-button" type="button">Run</button>
-        </div>
-
-        <div class="sample-row" id="sampleRow"></div>
-
-        <div class="console-grid">
-          <article class="info-card">
-            <p class="mini-label">Transcript</p>
-            <div id="transcriptBox" class="info-body muted">Waiting for a user command.</div>
-          </article>
-          <article class="info-card">
-            <p class="mini-label">Intent</p>
-            <div id="intentBox" class="info-body muted">No intent resolved yet.</div>
-          </article>
-          <article class="info-card wide">
-            <p class="mini-label">Assistant reply</p>
-            <div id="replyBox" class="info-body muted">Responses will stream here using the mock orchestration API.</div>
-          </article>
-        </div>
-
-        <div id="resultCards" class="result-card-grid"></div>
-
-        <div class="detail-grid">
-          <article class="info-card">
-            <p class="mini-label">Tool trace</p>
-            <div id="toolsBox" class="stack-box muted">No tool activity yet.</div>
-          </article>
-          <article class="info-card">
-            <p class="mini-label">Commercial insight</p>
-            <div id="insightsBox" class="stack-box muted">Pitch-oriented insights will appear here.</div>
-          </article>
-        </div>
-
-        <article id="tablePanel" class="info-card table-panel hidden">
-          <div class="table-head">
-            <p class="mini-label">Operational detail</p>
-            <h3 id="tableTitle">Result table</h3>
-          </div>
-          <div class="table-wrap">
-            <table id="resultTable"></table>
-          </div>
-        </article>
-
-        <article id="draftPanel" class="info-card draft-panel hidden">
-          <div class="table-head">
-            <p class="mini-label">Action draft</p>
-            <h3 id="draftTitle">Draft workflow item</h3>
-          </div>
-          <p id="draftStatus" class="draft-status"></p>
-          <div id="draftFields" class="draft-fields"></div>
-          <div class="draft-actions">
-            <button class="primary-button" type="button" id="approveDraft">Approve draft</button>
-            <button class="ghost-button" type="button" id="reviseDraft">Request revision</button>
-          </div>
-        </article>
-      </section>
-
-      <aside class="sidebar">
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">Live Risk Feed</p>
-              <h2>What the fleet sees now</h2>
-            </div>
-          </div>
-          <div id="alertsList" class="alert-list"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">Why Customers Buy</p>
-              <h2>Pitch anchors</h2>
-            </div>
-          </div>
-          <ul class="flat-list">
-            <li>Reduces time spent searching across PMS and procurement screens.</li>
-            <li>Explains why jobs are late, not just that they are late.</li>
-            <li>Turns job context into requisitions and follow-up actions.</li>
-            <li>Keeps regulated actions safe through confirmation and approvals.</li>
-          </ul>
-        </section>
       </aside>
-    </main>
+
+      <main class="workspace">
+        <section class="hero-band">
+          <div class="hero-copy">
+            <p class="eyebrow">Voice-First Operations Layer</p>
+            <h2>Designed to feel like a premium copilot inside any PMS.</h2>
+            <p class="lede">
+              Faster than menu navigation, safer than freeform chat, and styled like a live voice assistant rather than a report page.
+            </p>
+            <div class="hero-tags">
+              <span class="hero-tag">Natural voice prompts</span>
+              <span class="hero-tag">Auditable actions</span>
+              <span class="hero-tag">Cross-module reasoning</span>
+            </div>
+          </div>
+          <div class="control-dock">
+            <label class="selector">
+              <span>Connector profile</span>
+              <select id="connectorSelect"></select>
+            </label>
+            <label class="selector">
+              <span>User role</span>
+              <select id="roleSelect"></select>
+            </label>
+            <button id="runTour" class="primary-button" type="button">Run Full Demo</button>
+          </div>
+        </section>
+
+        <section class="console-layout">
+          <section class="voice-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Voice Console</p>
+                <h3>Ask the operations copilot</h3>
+              </div>
+              <span class="live-pill">Mock API online</span>
+            </div>
+
+            <div class="voice-orb-panel">
+              <div class="voice-orb-wrap">
+                <div class="voice-orb" id="voiceOrb">
+                  <span class="voice-orb-core"></span>
+                </div>
+              </div>
+              <div class="voice-meta">
+                <p class="mini-label">Assistant state</p>
+                <div id="voiceState" class="voice-state">Ready for a command</div>
+                <div class="voice-subline">Push to talk, get structured answers, then approve any action draft.</div>
+              </div>
+            </div>
+
+            <div class="command-shell">
+              <label class="sr-only" for="commandInput">Command</label>
+              <input id="commandInput" type="text" placeholder="Try: What critical overdue jobs are blocked by awaiting spares?">
+              <div class="command-actions">
+                <button id="micButton" class="ghost-button icon-button" type="button">Mic</button>
+                <button id="speakButton" class="ghost-button icon-button" type="button">Speak</button>
+                <button id="runButton" class="primary-button" type="button">Run</button>
+              </div>
+            </div>
+
+            <section class="guide-section">
+              <div class="section-headline">
+                <div>
+                  <p class="mini-label">Guided Stories</p>
+                  <h3>Run a pitch flow in one click</h3>
+                </div>
+              </div>
+              <div id="guideGrid" class="guide-grid"></div>
+            </section>
+
+            <section class="sample-library">
+              <div class="section-headline">
+                <div>
+                  <p class="mini-label">Prompt Library</p>
+                  <h3>Try voice or text examples by workflow</h3>
+                </div>
+              </div>
+              <div id="promptLibrary" class="prompt-library"></div>
+            </section>
+
+            <div class="sample-row" id="sampleRow"></div>
+
+            <div class="conversation-stack">
+              <article class="message-card user-card">
+                <p class="mini-label">Transcript</p>
+                <div id="transcriptBox" class="info-body muted">Waiting for a user command.</div>
+              </article>
+              <article class="message-card system-card">
+                <div class="message-meta">
+                  <div>
+                    <p class="mini-label">Intent</p>
+                    <div id="intentBox" class="intent-pill muted">No intent resolved yet.</div>
+                  </div>
+                </div>
+                <p class="mini-label">Assistant reply</p>
+                <div id="replyBox" class="info-body muted">Responses will stream here using the mock orchestration API.</div>
+              </article>
+            </div>
+
+            <div id="resultCards" class="result-card-grid"></div>
+
+            <div class="detail-grid">
+              <article class="info-card">
+                <p class="mini-label">Tool trace</p>
+                <div id="toolsBox" class="stack-box muted">No tool activity yet.</div>
+              </article>
+              <article class="info-card">
+                <p class="mini-label">Commercial insight</p>
+                <div id="insightsBox" class="stack-box muted">Pitch-oriented insights will appear here.</div>
+              </article>
+            </div>
+
+            <article id="tablePanel" class="info-card table-panel hidden">
+              <div class="table-head">
+                <p class="mini-label">Operational detail</p>
+                <h3 id="tableTitle">Result table</h3>
+              </div>
+              <div class="table-wrap">
+                <table id="resultTable"></table>
+              </div>
+            </article>
+
+            <article id="draftPanel" class="info-card draft-panel hidden">
+              <div class="table-head">
+                <p class="mini-label">Action draft</p>
+                <h3 id="draftTitle">Draft workflow item</h3>
+              </div>
+              <p id="draftStatus" class="draft-status"></p>
+              <div id="draftFields" class="draft-fields"></div>
+              <div class="draft-actions">
+                <button class="primary-button" type="button" id="approveDraft">Approve draft</button>
+                <button class="ghost-button" type="button" id="reviseDraft">Request revision</button>
+              </div>
+            </article>
+          </section>
+
+          <aside class="plugin-sidecar">
+            <section class="side-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Live Plugin Tiles</p>
+                  <h3>Embedded operational summary</h3>
+                </div>
+              </div>
+              <div class="metrics-strip" id="metricsStrip"></div>
+            </section>
+
+            <section class="side-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Risk Feed</p>
+                  <h3>What the fleet sees now</h3>
+                </div>
+              </div>
+              <div id="alertsList" class="alert-list"></div>
+            </section>
+
+            <section class="side-panel host-preview">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Plugin Positioning</p>
+                  <h3>How this sits inside a PMS</h3>
+                </div>
+              </div>
+              <div class="preview-surface">
+                <div class="preview-row">
+                  <span class="preview-label">Install mode</span>
+                  <span class="preview-value">Right-side voice drawer</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">Launch trigger</span>
+                  <span class="preview-value">Mic button or hotkey</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">Write policy</span>
+                  <span class="preview-value">Confirm before submit</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">Cross-module reach</span>
+                  <span class="preview-value">Jobs, defects, requisitions, POs</span>
+                </div>
+              </div>
+              <ul class="flat-list">
+                <li>Feels like a persistent assistant, not a hidden admin feature.</li>
+                <li>Fits naturally as a premium plugin inside legacy maritime software.</li>
+                <li>Works for office teams and vessel users with the same conversation surface.</li>
+              </ul>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </section>
   </div>
 
   <script src="/app.js"></script>
