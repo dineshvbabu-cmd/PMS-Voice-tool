@@ -328,6 +328,7 @@ async function runQuery(forcedCommand) {
     }
 
     const payload = await response.json();
+    setText(elements.transcriptBox, payload.transcriptDisplay || payload.normalizedEnglish || query);
     setText(elements.intentBox, payload.intent);
     await streamReply(payload.reply);
     renderToolTrace(payload.tools);

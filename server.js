@@ -341,6 +341,165 @@ function buildTable(title, columns, rows) {
   return { title, columns, rows };
 }
 
+async function callOpenAIJson(messages) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured on the server");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_LANGUAGE_MODEL,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed: ${errorText}`);
+  }
+
+  const payload = await response.json();
+  const content = payload.choices?.[0]?.message?.content || "{}";
+  return JSON.parse(content);
+}
+
+async function routePromptWithOpenAI({ query, role, connector }) {
+  return callOpenAIJson([
+    {
+      role: "system",
+      content: [
+        "You normalize and route multilingual maritime PMS and procurement prompts.",
+        "The output must be strict JSON with keys workflow, normalized_english, canonical_prompt, notes.",
+        "Supported workflows: capabilities, due_jobs, job_detail, overdue_jobs, defect_report, postponement, job_completion, requisition, procurement_followup, po_delay, analytics, backlog, generic.",
+        "Translate non-English to English.",
+        "Normalize dialects and broken English into concise operational English.",
+        "Preserve work order IDs, vessel names, equipment names, dates, and part names exactly when present.",
+        "Choose a canonical_prompt that this demo server can execute directly."
+      ].join(" ")
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        role,
+        connector,
+        query
+      })
+    }
+  ]);
+}
+
+async function composeGroundedReplyWithOpenAI({ query, role, connector, routed, payload }) {
+  return callOpenAIJson([
+    {
+      role: "system",
+      content: [
+        "You are a maritime operations copilot writing grounded answers for a PMS and procurement demo.",
+        "Use only the facts present in the provided payload.",
+        "Do not invent jobs, requisitions, dates, suppliers, metrics, or approvals.",
+        "Keep the answer concise, clear, and suitable for voice playback.",
+        "If a draft exists, mention that confirmation is still required before any write action.",
+        "Return strict JSON with keys reply, narration, and insights.",
+        "The insights field must be an array of up to 2 short strings."
+      ].join(" ")
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        role,
+        connector,
+        query,
+        routed,
+        payload: {
+          intent: payload.intent,
+          reply: payload.reply,
+          cards: payload.cards,
+          table: payload.table,
+          draft: payload.draft,
+          insights: payload.insights
+        }
+      })
+    }
+  ]);
+}
+
+async function enrichQueryWithOpenAI(queryPayload) {
+  const originalQuery = String(queryPayload.query || "").trim();
+  let routed = null;
+  let canonicalQuery = originalQuery;
+  const aiTools = [];
+
+  if (OPENAI_API_KEY) {
+    try {
+      routed = await routePromptWithOpenAI(queryPayload);
+      if (routed?.canonical_prompt) {
+        canonicalQuery = routed.canonical_prompt;
+      } else if (routed?.normalized_english) {
+        canonicalQuery = routed.normalized_english;
+      }
+      aiTools.push(
+        toolTrace(
+          "openai_prompt_router()",
+          `workflow ${routed?.workflow || "generic"} normalized prompt for deterministic handling`
+        )
+      );
+    } catch (error) {
+      aiTools.push(toolTrace("openai_prompt_router()", `fallback to local routing after ${error.message}`));
+    }
+  }
+
+  const payload = handleQuery(canonicalQuery, queryPayload.role, queryPayload.connector);
+  payload.transcript = originalQuery;
+  payload.normalizedEnglish = routed?.normalized_english || canonicalQuery;
+  payload.canonicalPrompt = canonicalQuery;
+  payload.transcriptDisplay =
+    payload.normalizedEnglish && payload.normalizedEnglish !== originalQuery
+      ? `Original: ${originalQuery}\nEnglish: ${payload.normalizedEnglish}`
+      : originalQuery;
+  payload.tools = [...aiTools, ...(payload.tools || [])];
+
+  if (!OPENAI_API_KEY) {
+    return payload;
+  }
+
+  try {
+    const groundedReply = await composeGroundedReplyWithOpenAI({
+      query: originalQuery,
+      role: queryPayload.role,
+      connector: queryPayload.connector,
+      routed,
+      payload
+    });
+
+    if (groundedReply?.reply) {
+      payload.reply = groundedReply.reply;
+    }
+    if (groundedReply?.narration) {
+      payload.narration = groundedReply.narration;
+    } else if (groundedReply?.reply) {
+      payload.narration = groundedReply.reply;
+    }
+    if (Array.isArray(groundedReply?.insights) && groundedReply.insights.length) {
+      payload.insights = groundedReply.insights;
+    }
+    payload.tools.unshift(
+      toolTrace("openai_grounded_response()", "phrased the answer from deterministic PMS and procurement facts")
+    );
+  } catch (error) {
+    payload.tools.unshift(
+      toolTrace("openai_grounded_response()", `kept deterministic reply after ${error.message}`)
+    );
+  }
+
+  return payload;
+}
+
 async function transcribeAudioToEnglish({ audioBase64, mimeType }) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured on the server");
@@ -377,40 +536,19 @@ async function transcribeAudioToEnglish({ audioBase64, mimeType }) {
   const transcriptionPayload = await transcriptionResponse.json();
   const transcriptText = transcriptionPayload.text || "";
 
-  const languageResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: OPENAI_LANGUAGE_MODEL,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "You normalize and translate maritime operational speech into clear English. Preserve work order IDs, vessel names, dates, equipment names, part names, and maritime abbreviations. Return strict JSON with keys source_language, normalized_english, needs_translation."
-        },
-        {
-          role: "user",
-          content: `Normalize this spoken maritime transcript for assistant processing. If the transcript is not English, translate it to operational English.\n\nTranscript:\n${transcriptText}`
-        }
-      ]
-    })
-  });
-
-  if (!languageResponse.ok) {
-    const errorText = await languageResponse.text();
-    throw new Error(`Language normalization failed: ${errorText}`);
-  }
-
-  const languagePayload = await languageResponse.json();
-  const content = languagePayload.choices?.[0]?.message?.content || "{}";
   let parsedContent = {};
 
   try {
-    parsedContent = JSON.parse(content);
+    parsedContent = await callOpenAIJson([
+      {
+        role: "system",
+        content: "You normalize and translate maritime operational speech into clear English. Preserve work order IDs, vessel names, dates, equipment names, part names, and maritime abbreviations. Return strict JSON with keys source_language, normalized_english, needs_translation."
+      },
+      {
+        role: "user",
+        content: `Normalize this spoken maritime transcript for assistant processing. If the transcript is not English, translate it to operational English.\n\nTranscript:\n${transcriptText}`
+      }
+    ]);
   } catch {
     parsedContent = {
       source_language: "unknown",
@@ -930,10 +1068,11 @@ const server = http.createServer(async (req, res) => {
         alerts: demoState.alerts,
         voiceConfig: {
           serverTranscriptionEnabled: Boolean(OPENAI_API_KEY),
+          queryRoutingEnabled: Boolean(OPENAI_API_KEY),
           transcriptionModel: OPENAI_TRANSCRIBE_MODEL,
           languageModel: OPENAI_LANGUAGE_MODEL,
           modeLabel: OPENAI_API_KEY
-            ? "Auto-detect dialect and translate to English"
+            ? "Auto-detect dialect, translate to English, and route with AI"
             : "Browser fallback only until OPENAI_API_KEY is configured"
         },
         promptGroups: demoState.promptGroups,
@@ -976,7 +1115,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && parsedUrl.pathname === "/api/query") {
       const rawBody = await readBody(req);
       const body = rawBody ? JSON.parse(rawBody) : {};
-      const payload = handleQuery(body.query, body.role, body.connector);
+      const payload = await enrichQueryWithOpenAI({
+        query: body.query,
+        role: body.role,
+        connector: body.connector
+      });
       sendJson(res, 200, payload);
       return;
     }
