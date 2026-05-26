@@ -24,39 +24,31 @@ http://localhost:3000
 
 ## GitHub publishing path
 
-This folder is not yet a git repository. If you want to publish it to your GitHub:
+This project is already pushed to:
 
-### 1. Initialize git locally
-
-```bash
-git init
-git add .
-git commit -m "harborops fleet copilot pitch demo"
-```
-
-### 2. Create or connect a GitHub repo
-
-If GitHub CLI is installed and authenticated:
-
-```bash
-gh repo create harborops-fleet-copilot-demo --private --source . --remote origin --push
-```
-
-If you prefer GitHub Desktop or the website:
-
-- create an empty repository
-- copy the remote URL
-- run:
-
-```bash
-git remote add origin <YOUR_REPO_URL>
-git branch -M main
-git push -u origin main
+```text
+https://github.com/dineshvbabu-cmd/PMS-Voice-tool
 ```
 
 ## Railway deployment path
 
-### Option A: Deploy directly with Railway CLI
+### Current Railway target
+
+This repo is wired to:
+
+- project ID: `3d7873bd-e749-4e63-a8eb-75f85f077f52`
+- service ID: `3f5aa530-8ebe-45fa-add0-c1aed44091f2`
+- environment ID: `8d2c8323-a718-469d-8e3c-8c965ece6c8c`
+
+### Option A: GitHub Actions automatic deploy
+
+Prerequisite:
+
+- add GitHub repository secret `RAILWAY_TOKEN`
+
+Once that secret exists, every push to `main` will deploy automatically using `.github/workflows/deploy-railway.yml`.
+
+### Option B: Deploy directly with Railway CLI
 
 Prerequisite:
 
@@ -67,26 +59,20 @@ railway login
 Then from this folder:
 
 ```bash
-railway init
+railway link --project 3d7873bd-e749-4e63-a8eb-75f85f077f52 --environment 8d2c8323-a718-469d-8e3c-8c965ece6c8c --service 3f5aa530-8ebe-45fa-add0-c1aed44091f2
 railway up
 ```
 
-If prompted:
+### Option C: Deploy through GitHub on Railway
 
-- choose a new project
-- deploy from the current directory
-
-### Option B: Deploy through GitHub on Railway
-
-After pushing to GitHub:
+If Railway native GitHub deploy is preferred:
 
 1. Log into Railway
-2. Choose `New Project`
-3. Choose `Deploy from GitHub repo`
-4. Select the repo
-5. Railway should detect the Node app automatically
-6. Set start command to `npm start` if needed
-7. Confirm the health check path `/api/health`
+2. Open the existing `PMS-Voice-tool` service
+3. Connect the GitHub repo `dineshvbabu-cmd/PMS-Voice-tool`
+4. Confirm start command `npm start`
+5. Confirm health check path `/api/health`
+6. Enable auto-deploy from `main`
 
 ## Suggested production polish before customer demos
 
