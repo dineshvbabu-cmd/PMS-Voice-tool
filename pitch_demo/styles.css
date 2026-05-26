@@ -89,9 +89,9 @@ body {
 .brand-lockup,
 .topbar-actions,
 .hero-tags,
-.command-actions,
 .draft-actions,
-.sample-row {
+.sample-row,
+.section-headline {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -390,6 +390,12 @@ input::placeholder {
     inset 0 0 28px rgba(144, 229, 255, 0.2);
 }
 
+.voice-orb-button {
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+}
+
 .voice-orb::before,
 .voice-orb::after {
   content: "";
@@ -426,7 +432,7 @@ input::placeholder {
 .command-shell {
   margin-top: 16px;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   gap: 12px;
   padding: 14px;
   border-radius: 22px;
@@ -434,11 +440,6 @@ input::placeholder {
   border: 1px solid var(--line);
 }
 
-.command-actions {
-  justify-content: flex-end;
-}
-
-.guide-section,
 .sample-library {
   margin-top: 18px;
   padding: 16px;
@@ -447,55 +448,33 @@ input::placeholder {
   border: 1px solid var(--line);
 }
 
-.guide-grid,
 .prompt-library {
   display: grid;
   gap: 12px;
   margin-top: 14px;
 }
 
-.guide-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.guide-card,
 .prompt-group {
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgba(8, 20, 36, 0.88);
 }
 
-.guide-card {
-  padding: 16px;
-}
-
-.guide-card p,
 .prompt-group p {
   margin: 0;
 }
 
-.guide-title,
 .prompt-group-title {
   font-family: var(--font-display);
   font-size: 1.05rem;
   color: var(--text);
 }
 
-.guide-description,
 .prompt-group-description {
   margin-top: 8px;
   color: var(--muted);
   line-height: 1.5;
   font-size: 0.94rem;
-}
-
-.guide-footer {
-  margin-top: 14px;
-}
-
-.guide-button {
-  width: 100%;
-  justify-content: center;
 }
 
 .prompt-group {
@@ -506,14 +485,6 @@ input::placeholder {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 14px;
-}
-
-.icon-button {
-  min-width: 84px;
-}
-
-.sample-row {
   margin-top: 14px;
 }
 

@@ -163,18 +163,25 @@ const demoState = {
         "What jobs are due on Meridian Pearl in the next 7 days?",
         "Read the instructions for WO-24051",
         "Show overdue jobs on Ocean Crest",
-        "What critical overdue jobs are blocked by awaiting spares?"
+        "What critical overdue jobs are blocked by awaiting spares?",
+        "What jobs are due today on Meridian Pearl?",
+        "List open jobs on Ocean Crest",
+        "Show in-progress jobs for Meridian Pearl",
+        "Read the description for WO-24088"
       ]
     },
     {
-      title: "Defects And Postponements",
+      title: "Defects, Closures And Postponements",
       description: "Controlled write workflows with approval steps.",
       prompts: [
         "Report a defect on purifier number 2 on Ocean Crest",
         "Postpone WO-24088 to 2026-05-30 because awaiting spares",
         "Defer WO-24088 due to material delay",
         "Create a defect for steering gear leak on Ocean Crest",
-        "Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory"
+        "Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory",
+        "Mark WO-24088 completed on 2026-05-26 with notes leak stopped after O-ring replacement",
+        "Close WO-24088",
+        "What do you need to close WO-24088?"
       ]
     },
     {
@@ -184,7 +191,10 @@ const demoState = {
         "Raise a requisition for steering gear O-rings linked to WO-24088",
         "Which urgent requisitions are older than 7 days?",
         "Follow up on urgent procurement items",
-        "What delayed POs affect maintenance?"
+        "What delayed POs affect maintenance?",
+        "Show stalled critical requisitions",
+        "Which purchase orders are delayed?",
+        "What procurement delays affect overdue maintenance?"
       ]
     },
     {
@@ -194,7 +204,22 @@ const demoState = {
         "Why is maintenance completion low on Meridian Pearl?",
         "Give me analytics for fleet maintenance backlog",
         "What is causing delay in job completion?",
-        "Summarize what this assistant can do"
+        "Summarize what this assistant can do",
+        "What is driving the backlog?",
+        "Explain the main cause of overdue work",
+        "Give me a management summary"
+      ]
+    },
+    {
+      title: "Quick Voice Shortcuts",
+      description: "Short, natural prompts that sound closer to Alexa or Siri usage.",
+      prompts: [
+        "Show due jobs",
+        "Show overdue jobs",
+        "Read job WO-24051",
+        "Help",
+        "Close overdue job WO-24088 on 2026-05-26 with description steering gear leak resolved",
+        "Raise requisition for WO-24088"
       ]
     }
   ],
@@ -368,6 +393,7 @@ function handleQuery(query, role, connector) {
 
   if (
     text.includes("read the instructions") ||
+    text.includes("read job") ||
     text.includes("show instructions") ||
     text.includes("read the description") ||
     (text.includes("instruction") && !text.includes("complete") && !text.includes("close")) ||
@@ -430,7 +456,12 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("delayed po") || (text.includes("po") && text.includes("maintenance"))) {
+  if (
+    text.includes("delayed po") ||
+    text.includes("delayed purchase order") ||
+    text.includes("purchase orders are delayed") ||
+    (text.includes("po") && text.includes("maintenance"))
+  ) {
     const delayed = demoState.purchaseOrders.filter((item) => item.status === "DELAYED");
     return result(
       "PO delay impact review",
@@ -456,7 +487,17 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if ((text.includes("due") || text.includes("next 7 days")) && text.includes("job")) {
+  if (
+    text.includes("job") &&
+    (
+      text.includes("due") ||
+      text.includes("next 7 days") ||
+      text.includes("open jobs") ||
+      text.includes("active jobs") ||
+      text.includes("in-progress jobs") ||
+      text.includes("show due jobs")
+    )
+  ) {
     const vessel = findVessel(text) || "Meridian Pearl";
     const jobs = demoState.jobs.filter((item) => item.vessel === vessel && item.status !== "CLOSED");
     return result(
@@ -676,7 +717,13 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("urgent requisitions") || text.includes("follow up") || text.includes("procurement")) {
+  if (
+    text.includes("urgent requisitions") ||
+    text.includes("follow up") ||
+    text.includes("procurement") ||
+    text.includes("stalled requisitions") ||
+    text.includes("critical requisitions")
+  ) {
     const stale = demoState.requisitions.filter((item) => ["URGENT", "CRITICAL"].includes(item.reqType) && item.ageDays >= 7);
     return result(
       "Procurement follow-up",
@@ -702,7 +749,13 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("why is maintenance completion low") || text.includes("analysis") || text.includes("analytics") || text.includes("job completion")) {
+  if (
+    text.includes("why is maintenance completion low") ||
+    text.includes("analysis") ||
+    text.includes("analytics") ||
+    text.includes("job completion") ||
+    text.includes("management summary")
+  ) {
     return result(
       "Operational analytics",
       `Maintenance completion is low because the mock fleet has critical jobs held by material availability, plus one in-progress unplanned job consuming engine department attention. In production, the plugin would compute this deterministically from completion rate, backlog aging, blocking reasons, and requisition aging before generating the explanation.`,

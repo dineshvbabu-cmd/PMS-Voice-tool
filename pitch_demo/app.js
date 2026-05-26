@@ -4,8 +4,8 @@ const elements = {
   metricsStrip: document.getElementById("metricsStrip"),
   alertsList: document.getElementById("alertsList"),
   promptLibrary: document.getElementById("promptLibrary"),
-  guideGrid: document.getElementById("guideGrid"),
-  sampleRow: document.getElementById("sampleRow"),
+  libraryPanel: document.getElementById("libraryPanel"),
+  toggleLibrary: document.getElementById("toggleLibrary"),
   commandInput: document.getElementById("commandInput"),
   transcriptBox: document.getElementById("transcriptBox"),
   intentBox: document.getElementById("intentBox"),
@@ -20,12 +20,8 @@ const elements = {
   draftTitle: document.getElementById("draftTitle"),
   draftStatus: document.getElementById("draftStatus"),
   draftFields: document.getElementById("draftFields"),
-  runButton: document.getElementById("runButton"),
-  micButton: document.getElementById("micButton"),
-  speakButton: document.getElementById("speakButton"),
   voiceOrb: document.getElementById("voiceOrb"),
   voiceState: document.getElementById("voiceState"),
-  runTour: document.getElementById("runTour"),
   approveDraft: document.getElementById("approveDraft"),
   reviseDraft: document.getElementById("reviseDraft")
 };
@@ -37,7 +33,8 @@ const state = {
   lastNarration: "",
   bootstrap: null,
   isRunning: false,
-  currentDraft: null
+  currentDraft: null,
+  voiceInputActive: false
 };
 
 function setText(node, value, muted = false) {
@@ -74,9 +71,7 @@ async function loadBootstrap() {
   renderRoles(payload.roles);
   renderMetrics(payload.metrics);
   renderAlerts(payload.alerts);
-  renderSamples(payload.sampleCommands);
   renderPromptLibrary(state.promptGroups);
-  renderGuidedStories(state.guidedStories);
 }
 
 function renderConnectors(connectors) {
@@ -119,21 +114,6 @@ function renderAlerts(alerts) {
     .join("");
 }
 
-function renderSamples(commands) {
-  elements.sampleRow.innerHTML = "";
-  commands.forEach((command) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "sample-chip";
-    button.textContent = command;
-    button.addEventListener("click", () => {
-      elements.commandInput.value = command;
-      runQuery(command);
-    });
-    elements.sampleRow.appendChild(button);
-  });
-}
-
 function renderPromptLibrary(groups) {
   if (!elements.promptLibrary) {
     return;
@@ -163,36 +143,6 @@ function renderPromptLibrary(groups) {
       const prompt = button.getAttribute("data-prompt");
       elements.commandInput.value = prompt;
       runQuery(prompt);
-    });
-  });
-}
-
-function renderGuidedStories(stories) {
-  if (!elements.guideGrid) {
-    return;
-  }
-
-  elements.guideGrid.innerHTML = "";
-  stories.forEach((story) => {
-    const card = document.createElement("article");
-    card.className = "guide-card";
-    card.innerHTML = `
-      <p class="guide-title">${escapeHtml(story.title)}</p>
-      <p class="guide-description">${escapeHtml(story.description || "")}</p>
-      <div class="guide-footer">
-        <button type="button" class="primary-button guide-button" data-story-id="${escapeHtml(story.id)}">Run this guide</button>
-      </div>
-    `;
-    elements.guideGrid.appendChild(card);
-  });
-
-  elements.guideGrid.querySelectorAll("[data-story-id]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const storyId = button.getAttribute("data-story-id");
-      const story = state.guidedStories.find((item) => item.id === storyId);
-      if (story) {
-        await runStory(story);
-      }
     });
   });
 }
@@ -344,12 +294,23 @@ async function runQuery(forcedCommand) {
     renderTable(payload.table);
     renderDraft(payload.draft);
     state.lastNarration = payload.narration || payload.reply;
-    setVoiceMode("Response ready");
+    if (state.voiceInputActive && "speechSynthesis" in window && state.lastNarration) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(state.lastNarration);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.addEventListener("start", () => setVoiceMode("Speaking the reply"));
+      utterance.addEventListener("end", () => setVoiceMode("Response ready"));
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setVoiceMode("Response ready");
+    }
   } catch (error) {
     setText(elements.intentBox, "Query failed");
     setText(elements.replyBox, `The demo request failed: ${error.message}`);
     setVoiceMode("Demo request failed");
   } finally {
+    state.voiceInputActive = false;
     state.isRunning = false;
     toggleActionButtons(false);
   }
@@ -357,10 +318,8 @@ async function runQuery(forcedCommand) {
 
 function toggleActionButtons(disabled) {
   [
-    elements.runButton,
-    elements.runTour,
-    elements.micButton,
-    elements.speakButton,
+    elements.voiceOrb,
+    elements.toggleLibrary,
     elements.approveDraft,
     elements.reviseDraft
   ].forEach((button) => {
@@ -389,9 +348,14 @@ async function runStory(story) {
 function setupSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    elements.micButton.textContent = "Mic unsupported";
-    elements.micButton.disabled = true;
-    setVoiceMode("Microphone unavailable");
+    setVoiceMode("Microphone unavailable, type and press Enter");
+    if (elements.voiceOrb) {
+      elements.voiceOrb.addEventListener("click", () => {
+        if (!state.isRunning && elements.commandInput.value.trim()) {
+          runQuery();
+        }
+      });
+    }
     return;
   }
 
@@ -399,11 +363,15 @@ function setupSpeechRecognition() {
   recognition.lang = "en-US";
   recognition.interimResults = false;
 
-  elements.micButton.addEventListener("click", () => {
+  elements.voiceOrb.addEventListener("click", () => {
     if (state.isRunning) {
       return;
     }
-    elements.micButton.textContent = "Listening...";
+    if (elements.commandInput.value.trim()) {
+      runQuery();
+      return;
+    }
+    state.voiceInputActive = true;
     setVoiceMode("Listening for a voice command", true);
     recognition.start();
   });
@@ -415,49 +383,28 @@ function setupSpeechRecognition() {
   });
 
   const resetMic = () => {
-    elements.micButton.textContent = "Mic";
-    setVoiceMode("Ready for a command");
+    if (!state.isRunning) {
+      setVoiceMode("Ready for a command");
+    }
   };
 
   recognition.addEventListener("end", resetMic);
   recognition.addEventListener("error", resetMic);
 }
 
-function setupSpeechSynthesis() {
-  if (!("speechSynthesis" in window)) {
-    elements.speakButton.textContent = "Speech unavailable";
-    elements.speakButton.disabled = true;
-    return;
+function setupButtons() {
+  if (elements.toggleLibrary) {
+    elements.toggleLibrary.addEventListener("click", () => {
+      const isHidden = elements.libraryPanel.classList.contains("hidden");
+      elements.libraryPanel.classList.toggle("hidden", !isHidden);
+      elements.toggleLibrary.textContent = isHidden ? "Hide Prompt Library" : "View Prompt Library";
+    });
   }
 
-  elements.speakButton.addEventListener("click", () => {
-    if (!state.lastNarration) {
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(state.lastNarration);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.addEventListener("start", () => setVoiceMode("Speaking the reply"));
-    utterance.addEventListener("end", () => setVoiceMode("Response ready"));
-    window.speechSynthesis.speak(utterance);
-  });
-}
-
-function setupButtons() {
-  elements.runButton.addEventListener("click", () => runQuery());
   elements.commandInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       runQuery();
-    }
-  });
-  elements.runTour.addEventListener("click", async () => {
-    for (const story of state.guidedStories) {
-      // eslint-disable-next-line no-await-in-loop
-      await runStory(story);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 700));
     }
   });
 
@@ -480,7 +427,6 @@ function setupButtons() {
 async function bootstrap() {
   await loadBootstrap();
   setupSpeechRecognition();
-  setupSpeechSynthesis();
   setupButtons();
 }
 

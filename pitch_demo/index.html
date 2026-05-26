@@ -58,7 +58,7 @@
               <span>User role</span>
               <select id="roleSelect"></select>
             </label>
-            <button id="runTour" class="primary-button" type="button">Run Full Demo</button>
+            <button id="toggleLibrary" class="ghost-button" type="button">View Prompt Library</button>
           </div>
         </section>
 
@@ -74,48 +74,21 @@
 
             <div class="voice-orb-panel">
               <div class="voice-orb-wrap">
-                <div class="voice-orb" id="voiceOrb">
+                <button class="voice-orb voice-orb-button" id="voiceOrb" type="button" aria-label="Activate assistant">
                   <span class="voice-orb-core"></span>
-                </div>
+                </button>
               </div>
               <div class="voice-meta">
                 <p class="mini-label">Assistant state</p>
                 <div id="voiceState" class="voice-state">Ready for a command</div>
-                <div class="voice-subline">Push to talk, get structured answers, then approve any action draft.</div>
+                <div class="voice-subline">Tap the assistant to speak. For text, type a prompt and press Enter. Any action draft will still ask for confirmation.</div>
               </div>
             </div>
 
             <div class="command-shell">
               <label class="sr-only" for="commandInput">Command</label>
-              <input id="commandInput" type="text" placeholder="Try: What critical overdue jobs are blocked by awaiting spares?">
-              <div class="command-actions">
-                <button id="micButton" class="ghost-button icon-button" type="button">Mic</button>
-                <button id="speakButton" class="ghost-button icon-button" type="button">Speak</button>
-                <button id="runButton" class="primary-button" type="button">Run</button>
-              </div>
+              <input id="commandInput" type="text" placeholder="Type a prompt and press Enter, or tap the assistant to speak">
             </div>
-
-            <section class="guide-section">
-              <div class="section-headline">
-                <div>
-                  <p class="mini-label">Guided Stories</p>
-                  <h3>Run a pitch flow in one click</h3>
-                </div>
-              </div>
-              <div id="guideGrid" class="guide-grid"></div>
-            </section>
-
-            <section class="sample-library">
-              <div class="section-headline">
-                <div>
-                  <p class="mini-label">Prompt Library</p>
-                  <h3>Try voice or text examples by workflow</h3>
-                </div>
-              </div>
-              <div id="promptLibrary" class="prompt-library"></div>
-            </section>
-
-            <div class="sample-row" id="sampleRow"></div>
 
             <div class="conversation-stack">
               <article class="message-card user-card">
@@ -169,6 +142,16 @@
                 <button class="ghost-button" type="button" id="reviseDraft">Request revision</button>
               </div>
             </article>
+
+            <section class="sample-library hidden" id="libraryPanel">
+              <div class="section-headline">
+                <div>
+                  <p class="mini-label">Prompt Library</p>
+                  <h3>Try voice or text examples by workflow</h3>
+                </div>
+              </div>
+              <div id="promptLibrary" class="prompt-library"></div>
+            </section>
           </section>
 
           <aside class="plugin-sidecar">
