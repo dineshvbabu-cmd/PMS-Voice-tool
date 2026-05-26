@@ -36,7 +36,8 @@ const state = {
   guidedStories: [],
   lastNarration: "",
   bootstrap: null,
-  isRunning: false
+  isRunning: false,
+  currentDraft: null
 };
 
 function setText(node, value, muted = false) {
@@ -241,9 +242,11 @@ function renderDraft(draft) {
   if (!draft) {
     elements.draftPanel.classList.add("hidden");
     elements.draftFields.innerHTML = "";
+    state.currentDraft = null;
     return;
   }
 
+  state.currentDraft = draft;
   elements.draftPanel.classList.remove("hidden");
   elements.draftTitle.textContent = draft.title;
   elements.draftStatus.textContent = draft.status;
@@ -459,9 +462,12 @@ function setupButtons() {
   });
 
   elements.approveDraft.addEventListener("click", () => {
-    setText(elements.insightsBox, "Draft approved in demo mode. In a live system, the write request would now move to the host PMS or procurement API.");
+    const message = state.currentDraft?.actionType === "job_completion"
+      ? "Job completion confirmed in demo mode. In a live system, the PMS work order would now move to CLOSED with the captured completion date and closure description."
+      : "Draft approved in demo mode. In a live system, the write request would now move to the host PMS or procurement API.";
+    setText(elements.insightsBox, message);
     elements.insightsBox.classList.remove("muted");
-    setVoiceMode("Draft approved");
+    setVoiceMode(state.currentDraft?.actionType === "job_completion" ? "Job closure confirmed" : "Draft approved");
   });
 
   elements.reviseDraft.addEventListener("click", () => {

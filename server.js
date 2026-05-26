@@ -173,7 +173,8 @@ const demoState = {
         "Report a defect on purifier number 2 on Ocean Crest",
         "Postpone WO-24088 to 2026-05-30 because awaiting spares",
         "Defer WO-24088 due to material delay",
-        "Create a defect for steering gear leak on Ocean Crest"
+        "Create a defect for steering gear leak on Ocean Crest",
+        "Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory"
       ]
     },
     {
@@ -205,7 +206,8 @@ const demoState = {
       commands: [
         "What jobs are due on Meridian Pearl in the next 7 days?",
         "What critical overdue jobs are blocked by awaiting spares?",
-        "Postpone WO-24088 to 2026-05-30 because awaiting spares"
+        "Postpone WO-24088 to 2026-05-30 because awaiting spares",
+        "Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory"
       ]
     },
     {
@@ -275,6 +277,30 @@ function findVessel(text) {
   return vessels.find((vessel) => text.includes(vessel.toLowerCase())) || null;
 }
 
+function findIsoDate(text) {
+  const match = String(text || "").match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function extractClosureDescription(text) {
+  const source = String(text || "");
+  const patterns = [
+    /description[:\s]+(.+)$/i,
+    /notes?[:\s]+(.+)$/i,
+    /because[:\s]+(.+)$/i,
+    /completed[:\s]+with[:\s]+(.+)$/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim().replace(/[.]+$/, "");
+    }
+  }
+
+  return null;
+}
+
 function card(label, value, tone, detail) {
   return { label, value, tone, detail };
 }
@@ -328,6 +354,7 @@ function handleQuery(query, role, connector) {
         cards: [
           card("Read workflows", "Jobs and details", "good", "Due jobs, overdue items, instructions, descriptions"),
           card("Write workflows", "Controlled drafts", "warn", "Defects, postponements, requisitions"),
+          card("Job closure", "Voice confirmed", "good", "Overdue jobs can be closed with date and notes"),
           card("Procurement", "Follow-up ready", "good", "Req aging, sourcing priority, PO delay impact"),
           card("Analytics", "Explainable", "good", "Root cause and management narrative")
         ],
@@ -339,7 +366,13 @@ function handleQuery(query, role, connector) {
     );
   }
 
-  if (text.includes("instruction") || text.includes("description") || text.includes("read the instructions")) {
+  if (
+    text.includes("read the instructions") ||
+    text.includes("show instructions") ||
+    text.includes("read the description") ||
+    (text.includes("instruction") && !text.includes("complete") && !text.includes("close")) ||
+    (text.includes("description") && (text.includes("read") || text.includes("show")))
+  ) {
     if (!job) {
       return result(
         "Work-order detail lookup",
@@ -530,6 +563,87 @@ function handleQuery(query, role, connector) {
     );
   }
 
+  if (
+    (text.includes("complete") || text.includes("close") || text.includes("mark")) &&
+    (text.includes("job") || text.includes("wo-") || text.includes("work order"))
+  ) {
+    if (!job) {
+      return result(
+        "Job completion workflow",
+        "I need a specific work-order ID to prepare a completion draft. Try: Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory.",
+        {
+          transcript,
+          tools: [toolTrace("clarify_query()", "missing work-order ID for closure workflow")]
+        }
+      );
+    }
+
+    const completionDate = findIsoDate(transcript);
+    const closureDescription = extractClosureDescription(transcript);
+    const isOverdue = job.dueDate < "2026-05-26";
+
+    if (!completionDate || !closureDescription) {
+      const missing = [
+        !completionDate ? "completion date in YYYY-MM-DD format" : null,
+        !closureDescription ? "closure description or completion notes" : null
+      ].filter(Boolean);
+
+      return result(
+        "Job completion workflow",
+        `I can draft closure for ${job.jobId}, but I still need ${missing.join(" and ")} before confirming the status change.`,
+        {
+          transcript,
+          tools: [
+            toolTrace("get_job_detail(job_id)", `loaded ${job.jobId} for completion workflow`),
+            toolTrace("clarify_query()", `missing ${missing.join(" and ")}`)
+          ],
+          cards: [
+            card("Job", job.jobId, "neutral", job.title),
+            card("Current status", job.status, isOverdue ? "risk" : "warn", isOverdue ? "Overdue job selected" : "Open job selected"),
+            card("Target date", job.dueDate, isOverdue ? "risk" : "neutral", "Original PMS due date"),
+            card("Need from user", missing.length.toString(), "warn", missing.join(" and "))
+          ]
+        }
+      );
+    }
+
+    return result(
+      "Job completion workflow",
+      `I prepared a completion draft for ${job.jobId}. The assistant captured the original target date, the spoken completion date, and the closure description. The next step is confirmation before the job status is changed to CLOSED.`,
+      {
+        transcript,
+        tools: [
+          toolTrace("get_job_detail(job_id)", `loaded ${job.jobId} with original due date ${job.dueDate}`),
+          toolTrace("prepare_job_completion(job_id, completed_date, closure_notes)", `drafted closure for ${completionDate}`),
+          toolTrace("update_job_status(job_id, CLOSED)", "held pending user confirmation")
+        ],
+        cards: [
+          card("Job", job.jobId, "neutral", job.title),
+          card("Original target date", job.dueDate, isOverdue ? "risk" : "neutral", isOverdue ? "Past due at time of closure" : "Closed within target window"),
+          card("Completion date", completionDate, "good", "Captured from voice or text command"),
+          card("Confirmation", "Required", "warn", "Status update will only happen after approval")
+        ],
+        draft: {
+          actionType: "job_completion",
+          title: "Job completion draft",
+          status: "Pending confirmation before closing overdue job",
+          fields: [
+            ["Job", job.jobId],
+            ["Vessel", job.vessel],
+            ["Current status", job.status],
+            ["Original target date", job.dueDate],
+            ["Completion date", completionDate],
+            ["Closure description", closureDescription]
+          ]
+        },
+        insights: [
+          "This is a high-value demo because it shows the assistant can safely move from read-only to controlled execution.",
+          "The original due date stays visible, so the completion story remains audit-friendly even for overdue work."
+        ]
+      }
+    );
+  }
+
   if (text.includes("requisition") && (text.includes("raise") || text.includes("create"))) {
     const sourceJob = job || demoState.jobs.find((item) => item.jobId === "WO-24088");
     const newReqId = `REQ-${26050 + demoState.requisitions.length + 1}`;
@@ -680,6 +794,7 @@ const server = http.createServer(async (req, res) => {
           "What critical overdue jobs are blocked by awaiting spares?",
           "Report a defect on purifier number 2 on Ocean Crest",
           "Postpone WO-24088 to 2026-05-30 because awaiting spares",
+          "Close WO-24088 completed on 2026-05-26 with description steering gear seals renewed and leak test satisfactory",
           "Raise a requisition for steering gear O-rings linked to WO-24088",
           "Which urgent requisitions are older than 7 days?",
           "Why is maintenance completion low on Meridian Pearl?"
