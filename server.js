@@ -7,6 +7,9 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const DEMO_DIR = path.join(ROOT, "pitch_demo");
 const PRD_PATH = path.join(ROOT, "PRODUCT_PRD_HARBOROPS_FLEET_COPILOT.md");
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-transcribe";
+const OPENAI_LANGUAGE_MODEL = process.env.OPENAI_LANGUAGE_MODEL || "gpt-5.4-mini";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -336,6 +339,92 @@ function toolTrace(name, outcome) {
 
 function buildTable(title, columns, rows) {
   return { title, columns, rows };
+}
+
+async function transcribeAudioToEnglish({ audioBase64, mimeType }) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured on the server");
+  }
+
+  const audioBuffer = Buffer.from(audioBase64, "base64");
+  const fileExtension = mimeType && mimeType.includes("ogg")
+    ? "ogg"
+    : mimeType && mimeType.includes("mp4")
+      ? "m4a"
+      : "webm";
+  const fileType = mimeType || "audio/webm";
+
+  const transcriptionForm = new FormData();
+  transcriptionForm.append(
+    "file",
+    new File([audioBuffer], `voice-input.${fileExtension}`, { type: fileType })
+  );
+  transcriptionForm.append("model", OPENAI_TRANSCRIBE_MODEL);
+
+  const transcriptionResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: transcriptionForm
+  });
+
+  if (!transcriptionResponse.ok) {
+    const errorText = await transcriptionResponse.text();
+    throw new Error(`Transcription failed: ${errorText}`);
+  }
+
+  const transcriptionPayload = await transcriptionResponse.json();
+  const transcriptText = transcriptionPayload.text || "";
+
+  const languageResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_LANGUAGE_MODEL,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "You normalize and translate maritime operational speech into clear English. Preserve work order IDs, vessel names, dates, equipment names, part names, and maritime abbreviations. Return strict JSON with keys source_language, normalized_english, needs_translation."
+        },
+        {
+          role: "user",
+          content: `Normalize this spoken maritime transcript for assistant processing. If the transcript is not English, translate it to operational English.\n\nTranscript:\n${transcriptText}`
+        }
+      ]
+    })
+  });
+
+  if (!languageResponse.ok) {
+    const errorText = await languageResponse.text();
+    throw new Error(`Language normalization failed: ${errorText}`);
+  }
+
+  const languagePayload = await languageResponse.json();
+  const content = languagePayload.choices?.[0]?.message?.content || "{}";
+  let parsedContent = {};
+
+  try {
+    parsedContent = JSON.parse(content);
+  } catch {
+    parsedContent = {
+      source_language: "unknown",
+      normalized_english: transcriptText,
+      needs_translation: false
+    };
+  }
+
+  return {
+    transcriptOriginal: transcriptText,
+    sourceLanguage: parsedContent.source_language || "unknown",
+    normalizedEnglish: parsedContent.normalized_english || transcriptText,
+    needsTranslation: Boolean(parsedContent.needs_translation)
+  };
 }
 
 function result(intent, reply, options = {}) {
@@ -839,6 +928,14 @@ const server = http.createServer(async (req, res) => {
         roles: demoState.roles,
         metrics: demoState.metrics,
         alerts: demoState.alerts,
+        voiceConfig: {
+          serverTranscriptionEnabled: Boolean(OPENAI_API_KEY),
+          transcriptionModel: OPENAI_TRANSCRIBE_MODEL,
+          languageModel: OPENAI_LANGUAGE_MODEL,
+          modeLabel: OPENAI_API_KEY
+            ? "Auto-detect dialect and translate to English"
+            : "Browser fallback only until OPENAI_API_KEY is configured"
+        },
         promptGroups: demoState.promptGroups,
         guidedStories: demoState.guidedStories,
         sampleCommands: [
@@ -852,6 +949,26 @@ const server = http.createServer(async (req, res) => {
           "Which urgent requisitions are older than 7 days?",
           "Why is maintenance completion low on Meridian Pearl?"
         ]
+      });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/api/transcribe") {
+      const rawBody = await readBody(req);
+      const body = rawBody ? JSON.parse(rawBody) : {};
+      if (!body.audioBase64) {
+        sendJson(res, 400, { ok: false, error: "audioBase64 is required" });
+        return;
+      }
+
+      const voicePayload = await transcribeAudioToEnglish({
+        audioBase64: body.audioBase64,
+        mimeType: body.mimeType
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        ...voicePayload
       });
       return;
     }

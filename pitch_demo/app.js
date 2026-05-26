@@ -34,7 +34,12 @@ const state = {
   bootstrap: null,
   isRunning: false,
   currentDraft: null,
-  voiceInputActive: false
+  voiceInputActive: false,
+  serverVoiceEnabled: false,
+  mediaRecorder: null,
+  recordedChunks: [],
+  fallbackRecognition: null,
+  isRecording: false
 };
 
 function setText(node, value, muted = false) {
@@ -67,11 +72,15 @@ async function loadBootstrap() {
   state.sampleCommands = payload.sampleCommands;
   state.promptGroups = payload.promptGroups || [];
   state.guidedStories = payload.guidedStories || [];
+  state.serverVoiceEnabled = Boolean(payload.voiceConfig?.serverTranscriptionEnabled);
   renderConnectors(payload.connectors);
   renderRoles(payload.roles);
   renderMetrics(payload.metrics);
   renderAlerts(payload.alerts);
   renderPromptLibrary(state.promptGroups);
+  if (payload.voiceConfig?.modeLabel) {
+    setVoiceMode(payload.voiceConfig.modeLabel);
+  }
 }
 
 function renderConnectors(connectors) {
@@ -234,6 +243,39 @@ function renderInsights(insights) {
   elements.insightsBox.classList.remove("muted");
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function transcribeRecordedAudio(blob) {
+  const audioBase64 = await blobToBase64(blob);
+  const response = await fetch("/api/transcribe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      audioBase64,
+      mimeType: blob.type || "audio/webm"
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Voice transcription failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
 async function streamReply(text) {
   elements.replyBox.classList.remove("muted");
   elements.replyBox.textContent = "";
@@ -329,67 +371,101 @@ function toggleActionButtons(disabled) {
   });
 }
 
-async function runStory(story) {
-  if (!story || !Array.isArray(story.commands) || !story.commands.length) {
-    return;
-  }
-
-  setVoiceMode(`Running guide: ${story.title}`);
-  for (const command of story.commands) {
-    elements.commandInput.value = command;
-    // eslint-disable-next-line no-await-in-loop
-    await runQuery(command);
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, 700));
-  }
-  setVoiceMode(`Guide complete: ${story.title}`);
-}
-
-function setupSpeechRecognition() {
+function setupVoiceInput() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    setVoiceMode("Microphone unavailable, type and press Enter");
-    if (elements.voiceOrb) {
-      elements.voiceOrb.addEventListener("click", () => {
-        if (!state.isRunning && elements.commandInput.value.trim()) {
-          runQuery();
-        }
-      });
-    }
-    return;
+  if (SpeechRecognition) {
+    state.fallbackRecognition = new SpeechRecognition();
+    state.fallbackRecognition.lang = "en-US";
+    state.fallbackRecognition.interimResults = false;
+    state.fallbackRecognition.addEventListener("result", (event) => {
+      const transcript = event.results[0][0].transcript;
+      elements.commandInput.value = transcript;
+      runQuery(transcript);
+    });
+    state.fallbackRecognition.addEventListener("end", () => {
+      if (!state.isRunning && !state.isRecording) {
+        setVoiceMode("Ready for a command");
+      }
+    });
+    state.fallbackRecognition.addEventListener("error", () => {
+      if (!state.isRunning && !state.isRecording) {
+        setVoiceMode("Voice input unavailable, type and press Enter");
+      }
+    });
   }
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.interimResults = false;
+  if (elements.voiceOrb) {
+    elements.voiceOrb.addEventListener("click", async () => {
+      if (state.isRunning) {
+        return;
+      }
 
-  elements.voiceOrb.addEventListener("click", () => {
-    if (state.isRunning) {
-      return;
-    }
-    if (elements.commandInput.value.trim()) {
-      runQuery();
-      return;
-    }
-    state.voiceInputActive = true;
-    setVoiceMode("Listening for a voice command", true);
-    recognition.start();
-  });
+      if (elements.commandInput.value.trim()) {
+        runQuery();
+        return;
+      }
 
-  recognition.addEventListener("result", (event) => {
-    const transcript = event.results[0][0].transcript;
-    elements.commandInput.value = transcript;
-    runQuery(transcript);
-  });
+      if (state.serverVoiceEnabled && navigator.mediaDevices?.getUserMedia && window.MediaRecorder) {
+        try {
+          if (!state.isRecording) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            state.recordedChunks = [];
+            state.mediaRecorder = new MediaRecorder(stream);
+            state.mediaRecorder.addEventListener("dataavailable", (event) => {
+              if (event.data.size > 0) {
+                state.recordedChunks.push(event.data);
+              }
+            });
+            state.mediaRecorder.addEventListener("stop", async () => {
+              const blob = new Blob(state.recordedChunks, {
+                type: state.recordedChunks[0]?.type || "audio/webm"
+              });
+              stream.getTracks().forEach((track) => track.stop());
+              state.voiceInputActive = true;
+              setVoiceMode("Transcribing and normalizing to English");
+              try {
+                const payload = await transcribeRecordedAudio(blob);
+                const finalTranscript = payload.normalizedEnglish || payload.transcriptOriginal || "";
+                elements.commandInput.value = finalTranscript;
+                setText(
+                  elements.transcriptBox,
+                  payload.needsTranslation
+                    ? `Original: ${payload.transcriptOriginal}\nEnglish: ${finalTranscript}`
+                    : finalTranscript
+                );
+                await runQuery(finalTranscript);
+              } catch (error) {
+                setVoiceMode("Voice transcription failed, try again");
+                setText(elements.replyBox, `Voice processing failed: ${error.message}`);
+              }
+            });
 
-  const resetMic = () => {
-    if (!state.isRunning) {
-      setVoiceMode("Ready for a command");
-    }
-  };
+            state.isRecording = true;
+            state.voiceInputActive = true;
+            setVoiceMode("Listening. Tap again to stop.", true);
+            state.mediaRecorder.start();
+            return;
+          }
 
-  recognition.addEventListener("end", resetMic);
-  recognition.addEventListener("error", resetMic);
+          state.isRecording = false;
+          setVoiceMode("Finishing recording");
+          state.mediaRecorder.stop();
+          return;
+        } catch (error) {
+          setVoiceMode("Microphone access failed");
+        }
+      }
+
+      if (state.fallbackRecognition) {
+        state.voiceInputActive = true;
+        setVoiceMode("Listening for an English voice command", true);
+        state.fallbackRecognition.start();
+        return;
+      }
+
+      setVoiceMode("Microphone unavailable, type and press Enter");
+    });
+  }
 }
 
 function setupButtons() {
@@ -426,7 +502,7 @@ function setupButtons() {
 
 async function bootstrap() {
   await loadBootstrap();
-  setupSpeechRecognition();
+  setupVoiceInput();
   setupButtons();
 }
 
